@@ -1,0 +1,281 @@
+---
+title: "Short PCA Vignette"
+author: "Aedin"
+date: "May 1, 2018"
+output: BiocStyle::html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r style, echo = FALSE, results = 'asis'}
+BiocStyle::markdown()
+```
+
+#  Toy data
+Create a cloud of points; two vectors, x,y of length 100. This example dataset was included in Lior Patcher's blog https://liorpachter.wordpress.com/tag/least-squares/
+
+```{r}
+ set.seed(2)             #sets the seed for random number generation.
+ x <- 1:100              #creates a vector x with numbers from 1 to 100
+ ex <- rnorm(100, 0, 30) #100 normally distributed random numbers, mean=0, sd=30
+ ey <- rnorm(100, 0, 30) # 100 normally distributed random numbers, mean=0, sd=30
+ y <- 30 + 2 * x         #sets y to be a vector that is a linear function of x
+ x_obs <- x + ex         #adds "noise" to x
+ y_obs <- y + ey         #adds "noise" to y
+ par(mfrow=c(1,2))
+ hist(x_obs)
+ hist(y_obs)
+```
+ 
+Save  both vectors in a matrix P
+```{r}
+P <- cbind(x_obs,y_obs) #places points in matrix
+summary(P)
+```
+
+Plot x,y. Show center (mean (x), mean(y)) on plot
+```{r}                                                                                                          
+plot(P,asp=1,col=1) #plot points
+points(x=mean(x_obs),y=mean(y_obs),col="orange", pch=19) #show center
+```
+ 
+ 
+
+# Computing via svd of  centered, covariance  matrix
+
+PCA can be computed as a singular value decomposition of a column centered matrix. Therefore we first processs the matrix.
+
+```{r}
+M <- cbind(x_obs-mean(x_obs),y_obs-mean(y_obs))#centered matrix
+Mx<-scale(P, scale=FALSE, center=TRUE)
+all.equal(M, Mx, check.attributes=FALSE)  # Is M equal to Mx, ignore col names
+
+```
+
+
+Singular value decomposition of M. The singular value decomposition of M decomposes it into M=UDV^t^ where D is a diagonal matrix and both U and V^t^ are orthogonal matrices.
+
+```{r}
+ d <- svd(M)$d          #the singular values
+ v <- svd(M)$v          #the right singular vectors
+svd(M)$v
+```
+
+# Eigenvector, Eigenvalues of the centered, covariance  matrix
+The eigenvectors of the covariance matrix provide the principal axes, and the eigenvalues quantify the fraction of variance explained in each component. 
+
+
+```{r}
+MCov <- cov(M)          #creates covariance matrix
+eigenValues <- eigen(MCov)$values       #compute eigenvalues
+eigenVectors <- eigen(MCov)$vectors     #compute eigenvectors
+eigenValues
+eigenVectors
+```
+
+
+The right singular vectors are the eigenvectors of M^t^M.  Next I plot the principal axes:
+ 
+```{r}
+plot(P,asp=1,col=1) #plot points
+points(x=mean(x_obs),y=mean(y_obs),col="orange", pch=19) #show center
+lines(x_obs,eigenVectors[2,1]/eigenVectors[1,1]*M[x]+mean(y_obs),col=8)
+```
+
+This shows the first principal axis. Note that it passes through the mean as expected. The ratio of the eigenvectors gives the slope of the axis. Next
+
+```{r}
+plot(P,asp=1,col=1) #plot points
+points(x=mean(x_obs),y=mean(y_obs),col="orange", pch=19) #show center
+lines(x_obs,eigenVectors[2,1]/eigenVectors[1,1]*M[x]+mean(y_obs),col=8)
+lines(x_obs,eigenVectors[2,2]/eigenVectors[1,2]*M[x]+mean(y_obs),col=8)
+```
+shows the second principal axis, which is orthogonal to the first (recall that the matrix V^t^ in the singular value decomposition is orthogonal). This can be checked by noting that the second principal axis is also
+                                                     
+as the product of orthogonal slopes is -1. Next, I plot the projections of the points onto the first principal component:
+
+```{r}
+trans <- (M%*%v[,1])%*%v[,1] #compute projections of points
+P_proj <- scale(trans, center=-cbind(mean(x_obs),mean(y_obs)), scale=FALSE) 
+
+plot(P,asp=1,col=1) #plot points
+lines(x_obs,eigenVectors[2,1]/eigenVectors[1,1]*M[x]+mean(y_obs),col=8)
+lines(x_obs,eigenVectors[2,2]/eigenVectors[1,2]*M[x]+mean(y_obs),col=8)
+#points(P_proj, col=4,pch=19,cex=0.5) #plot projections
+segments(x_obs,y_obs,P_proj[,1],P_proj[,2],col=4,lty=2) #connect to points
+```
+
+
+# PCA in R
+In R, there are several functions from different packages that allow us to perform PCA. These include;
+
+* prcomp() (stats)
+* princomp() (stats)
+* PCA() (FactoMineR)
+* dudi.pca() (ade4)
+
+We will demonstrate some of these and explore these using exploR
+
+
+
+
+# Equivalents across methods
+Give an input matrix P and result res
+
+
+|Function | loadings | scores | plot|
+| :------------- |:-------------| :-----| :-----|
+|prcomp(P, center=TRUE, scale=TRUE) | res\$rotation |res\$x | biplot(res)|
+|princomp(P, cor=TRUE) | res$loadings | res\$scores | biplot(res)|
+|PCA(P) | res\$svd\$V | res\$ind\$coord | plot(res)|
+|dudi.pca(P, center=TRUE, scale=TRUE) | res\$c1 | res\$li | scatter(res)|
+
+
+With ade4::dudi.pca and prcomp the default is center = TRUE, scale = TRUE.But  with princomp, cor=FALSE by default. 
+
+## svd
+To get the equivalent result using svd or eigen above, repeat the code above but scale and center the data scale(P, center=TRUE, scale=TRUE).
+
+```{r}
+svd(scale(P))$v
+```
+
+## prcomp
+
+First stats::prcomp.  The eigenvector are stored in $rotation 
+```{r}
+p1<- prcomp(P, scale = TRUE)
+p1
+summary(p1)
+
+# This can be calculated as;
+eigs= p1$sdev^2
+eigSum= rbind(
+  SD = sqrt(eigs),
+  Proportion = eigs/sum(eigs),
+  Cumulative = cumsum(eigs)/sum(eigs))
+
+eigSum
+```
+
+
+# princomp
+
+```{r}
+p2<-stats::princomp(P)
+
+# sqrt of eigenvalues
+p2$sdev
+# eigenvectors
+p2$loadings
+```
+
+## FactoMineR
+FactoMineR::PCA calls svd to compute the PCA
+```{r}
+p3<-FactoMineR::PCA(P)
+p3$eig
+p3$var$coord  # correlations between variables and PCs
+```
+
+
+## ADE4::dudi.pca
+First ade4::dudi.pca scales the data and stores the scaled data in $tab. In PCA this will be almost equivalent to scale. However there is a minor difference (see https://pbil.univ-lyon1.fr/R/pdf/course2.pdf).  ade4 usees the duality diagram framework for computing pca and other matrix factorizations (so it provides lw and cw which are the row and columns weights). See Cruz and Holmes 2011 for a wonderful tutorial on the duality diagram framework https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3265363/
+
+
+
+```{r}
+p4<-ade4::dudi.pca(P, scannf = FALSE, nf=2)  # save 2 axis by default,
+head(p4$tab)  # centered/scaled data. 
+head(scale(P))
+```
+
+The values used for centering are stored in cent, it is a the colMeans. norm provides the sd of the columns
+```{r}
+p4$cent == colMeans(P)
+sd.n <- function(x) sqrt(var(x) * (length(x) - 1)/length(x))
+identical(p4$norm,apply(P, 2, sd.n))
+```
+The summary printout is equivalent to P3 (p3$eig) above. The eigenvales are stored in p4$eig.
+
+```{r}
+summary(p4)
+p4$eig
+p4$c1
+p4$co
+```
+The cumulative % of variance explained by each component ;
+```{r}
+(k <- 100 * p4$eig/sum(p4$eig))
+cumsum(k)
+```
+
+nf is an integer giving the number of axes kept. nf will always be lower that the number of row or columns of the matrix -1.
+```{r}
+p4$nf
+```
+
+c1 gives the variables’ coordinates, normed to 1. It is also called the
+coefficients of the combination or the loadings of variables.  Equally the outpur matrix l1 gives the individuals’ coordinates, normed to 1. It is also called the
+loadings of individuals.
+```{r}
+p4$c1
+sum(p4$cw * p4$c1$CS1^2)
+```
+
+co gives the variables’ coordinates, normed to the square root of the eigenvalues.
+```{r}
+p4$co
+sum(p4$cw * p4$co$Comp1^2)
+```
+
+
+The link between  c1 and co is defined by:
+```{r}
+p4$c1$CS1 * sqrt(p4$eig[1])
+```
+
+
+# Visualization and Exploration of results
+
+The github package https://github.com/juba/explor is useful for exploring data. It includes plotting functions for many packages including ade4, FactoMineR and baseR functions prcomp and princomp;
+
+For now on, it is usable the following types of analyses :
+
+Analysis | Function  | Package | Notes
+------------- | ------------- | ---------- | --------
+Principal Component Analysis  | PCA  | [FactoMineR](http://factominer.free.fr/) | -
+Correspondance Analysis  | CA  | [FactoMineR](http://factominer.free.fr/) | -
+Multiple Correspondence Analysis  | MCA  | [FactoMineR](http://factominer.free.fr/) | -
+Principal Component Analysis  | dudi.pca  | [ade4](https://cran.r-project.org/package=ade4) | Qualitative supplementary variables are ignored
+Correspondance Analysis  | dudi.coa  | [ade4](https://cran.r-project.org/package=ade4)  | -
+Multiple Correspondence Analysis  | dudi.acm  | [ade4](https://cran.r-project.org/package=ade4) | Quantitative supplementary variables are ignored
+Specific Multiple Correspondance Analysis | speMCA | [GDAtools](https://cran.r-project.org/package=GDAtools) | Supplementary variables are not supported
+Multiple Correspondance Analysis | mca | [MASS](https://cran.r-project.org/package=MASS) | Quantitative supplementary variables are not supported
+Principal Component Analysis  | princomp  | stats | Supplementary variables are ignored
+Principal Component Analysis  | prcomp  | stats | Supplementary variables are ignored
+
+
+
+
+```{r}
+if(!"explor" %in% rownames(installed.packages()))    devtools::install_github("juba/explor")
+
+if(!"scatterD3" %in% rownames(installed.packages())) 
+devtools::install_github("juba/scatterD3")
+
+```
+
+```{r, eval=FALSE}
+require(explor)
+explor::explor(p4)
+```
+
+
+```{r, eval=FALSE}
+data(children)
+res.ca <- CA(children, row.sup = 15:18, col.sup = 6:8)
+explor(res.ca)
+```
