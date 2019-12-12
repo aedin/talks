@@ -1,3 +1,5 @@
+autoplot(ir.pca, data=iris, colour="Species", frame=TRUE, frame.type="norm")
+autoplot(ir.pca, data=iris, colour="Species", frame=TRUE, frame.type="norm")
 ---
 title: "Short PCA Vignette"
 author: "Aedin"
@@ -29,7 +31,7 @@ Create a cloud of points; two vectors, x,y of length 100. This example dataset w
  hist(y_obs)
 ```
  
-Save  both vectors in a matrix P
+Save  both vectors in a matrix of toy data called P
 ```{r}
 P <- cbind(x_obs,y_obs) #places points in matrix
 summary(P)
@@ -57,10 +59,30 @@ all.equal(M, Mx, check.attributes=FALSE)  # Is M equal to Mx, ignore col names
 
 Singular value decomposition of M. The singular value decomposition of M decomposes it into M=UDV^t^ where D is a diagonal matrix and both U and V^t^ are orthogonal matrices.
 
+The output is 
+
+d	- a vector containing the singular values 
+u	- the left singular vectors 
+v	- the right singular vectors of x
+
+create an
+The eigenVectors are in $v
 ```{r}
- d <- svd(M)$d          #the singular values
- v <- svd(M)$v          #the right singular vectors
-svd(M)$v
+ p<-svd(M)
+ d <- p$d          #the singular values
+ v <- p$v          #the right singular vectors
+
+```
+
+The eigenvalues are
+```{r}
+diag(p$d)
+```
+
+Which is 
+
+```{r}
+t(p$u) %*% M %*% p$v
 ```
 
 # Eigenvector, Eigenvalues of the centered, covariance  matrix
@@ -69,9 +91,13 @@ The eigenvectors of the covariance matrix provide the principal axes, and the ei
 
 ```{r}
 MCov <- cov(M)          #creates covariance matrix
-eigenValues <- eigen(MCov)$values       #compute eigenvalues
+eigenvalues <- eigen(MCov)$values       #compute eigenvalues
+eigenvalues
+```
+
+```{r}
 eigenVectors <- eigen(MCov)$vectors     #compute eigenvectors
-eigenValues
+
 eigenVectors
 ```
 
@@ -135,24 +161,48 @@ Give an input matrix P and result res
 
 With ade4::dudi.pca and prcomp the default is center = TRUE, scale = TRUE.But  with princomp, cor=FALSE by default. 
 
-## svd
-To get the equivalent result using svd or eigen above, repeat the code above but scale and center the data scale(P, center=TRUE, scale=TRUE).
+## PCA using svd
+Now repeat the code above but scale and center the data scale(P, center=TRUE, scale=TRUE).
+
+The columns u from the SVD correspond to the principal components x in the PCA. 
+
+Furthermore, the matrix v from the SVD is equivalent to the rotation matrix returned by prcomp.
 
 ```{r}
-svd(scale(P))$v
+p0<-svd(scale(P))
+p0$v
 ```
+
+
 
 ## prcomp
 
-First stats::prcomp.  The eigenvector are stored in $rotation 
+First stats::prcomp.  The eigenvectors are stored in \$rotation. Note these are the same as svd$v on scale data 
 ```{r}
 p1<- prcomp(P, scale = TRUE)
-p1
-summary(p1)
+p1$rotation
+```
 
-# This can be calculated as;
+```{r}
+ (p1$rotation== p0$v)
+```
+
+eigenvalues - sdev
+eigenvector  - rotation
+
+```{r}
+names(p1)
+```
+
+```{r}
+summary(p1)
+```
+
+To calculated eigenvalues information manually here is the code;
+```{r}
 eigs= p1$sdev^2
 eigSum= rbind(
+  eigs=eigs,
   SD = sqrt(eigs),
   Proportion = eigs/sum(eigs),
   Cumulative = cumsum(eigs)/sum(eigs))
@@ -160,6 +210,38 @@ eigSum= rbind(
 eigSum
 ```
 
+
+Eigenvalues from svd on the scaled data. The diagonal elements of d from the SVD are proportional to the standard deviations (sdev) returned by PCA. 
+
+The elements of d are formed by taking the sum of the squares of the principal components but not dividing by the sample size.
+
+Therefore we need to divide by rank of the matrix, or its the sample size, which is either the ncol or nrow of the matrix -1. 
+
+```{r}
+
+p0$d^2/(nrow(p0$u) - 1)
+eigs= p0$d^2/(nrow(p0$u) - 1)
+eigSum.svd= rbind(
+  eigs= eigs,
+  SD = sqrt(eigs),
+  Proportion = eigs/sum(eigs),
+  Cumulative = cumsum(eigs)/sum(eigs))
+eigSum.svd
+```
+
+
+If we had more components, we could generate a scree plot. Its not very useful with 2 components, but here is the code
+
+Caculate the Proportion of Variance explained by each component (eig sum Proportion above)
+```{r}
+ProportionVariance = p0$d^2 /sum(p0$d^2 )
+ProportionVariance
+```
+
+```{r}
+plot(ProportionVariance, xlim = c(0, 5), type = "b", pch = 16, xlab = "principal components", 
+    ylab = "variance explained")
+```
 
 # princomp
 
@@ -174,10 +256,20 @@ p2$loadings
 
 ## FactoMineR
 FactoMineR::PCA calls svd to compute the PCA
+
+
 ```{r}
 p3<-FactoMineR::PCA(P)
-p3$eig
-p3$var$coord  # correlations between variables and PCs
+```
+
+The eigenvalues, same as eigSum and eigSum.svd above
+```{r}
+t(p3$eig)
+```
+
+# correlations between variables and PCs
+```{r}
+p3$var$coord  
 ```
 
 
@@ -279,3 +371,39 @@ data(children)
 res.ca <- CA(children, row.sup = 15:18, col.sup = 6:8)
 explor(res.ca)
 ```
+
+## factoextra
+There is also a nice package called factoextra. This works all of the above classes
+
+```{r}
+library(factoextra)
+
+res<- list(p0,p1,p2,p3,p4) 
+names(res) = c('svd_scaledData','prcomp', 'princomp', 'FactoMineR', 'ade4')
+
+# get_eig doesn't work on svd
+e<-sapply(res[-1],get_eig)
+e
+```
+```{r}
+fviz_pca_var(p1,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+```
+
+```{r}
+fviz_pca_biplot(p1, repel = TRUE,
+                col.var = "#2E9FDF", # Variables color
+                col.ind = "#696969"  # Individuals color
+                )
+
+```
+
+
+# Useful Links and References
+
+### prcomp v princomp
+http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/118-principal-component-analysis-in-r-prcomp-vs-princomp/
