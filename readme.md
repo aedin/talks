@@ -1,4 +1,4 @@
-View rendered Rmd files
+View rendered Rmd file of the PCA Tutorial
 https://aedin.github.io/talks/
 
 
